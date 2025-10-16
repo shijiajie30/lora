@@ -1,262 +1,440 @@
-# macOS 训练指南
+# Llama-3.2-3B LoRA 微调项目
 
-## ⚠️ macOS 特别说明
+基于 **Llama-3.2-3B-Instruct** 模型的 LoRA (Low-Rank Adaptation) 微调项目，用于法律领域问答任务。
 
-你正在 macOS 上运行此项目。由于 macOS 不支持 CUDA，训练配置已自动调整。
+## 📋 项目简介
 
-## 🔄 自动调整内容
+本项目使用 PEFT (Parameter-Efficient Fine-Tuning) 库中的 LoRA 技术对 Llama-3.2-3B 模型进行高效微调。通过在模型的注意力层中添加低秩矩阵，只需训练约 1.5% 的参数即可实现模型适配。
 
-### 1. 禁用 4-bit 量化
-- ❌ **bitsandbytes** 库需要 CUDA，macOS 不可用
-- ✅ 改用 **全精度 (float32)** 或 **半精度 (float16)**
-- ✅ 显存占用会增加，但在 Apple Silicon 上仍可运行
+### 核心特性
 
-### 2. 使用 MPS 加速
-- ✅ **MPS (Metal Performance Shaders)** - Apple 的 GPU 加速框架
-- ✅ 适用于 M1/M2/M3 系列芯片
-- ⚠️ 性能比 CUDA 慢，但比 CPU 快很多
+- ✅ **参数高效**: 只训练 1.5% 的参数（~48M / 3.2B）
+- ✅ **显存友好**: 支持 macOS MPS / CUDA GPU / CPU 训练
+- ✅ **自动适配**: 自动检测设备并优化配置
+- ✅ **快速训练**: 1000条数据约 30-45 分钟（M2 Max）
+- ✅ **完整工具链**: 训练 → 推理 → 对比评估
 
-### 3. 优化器调整
-- ❌ `paged_adamw_8bit` (需要 bitsandbytes)
-- ✅ `adamw_torch` (PyTorch 原生优化器)
+### 数据集
 
-## 💻 硬件要求
-
-### Apple Silicon (M 系列芯片) - 推荐
-
-| 芯片 | 统一内存 | 可训练模型 | 预估速度 |
-|------|---------|----------|---------|
-| M1 | 8 GB | 1B 模型 | 慢 |
-| M1 Pro/Max | 16-32 GB | 3B 模型 | 中等 |
-| M2 | 8-24 GB | 1-3B 模型 | 中等 |
-| M2 Pro/Max | 16-96 GB | 3-7B 模型 | 快 |
-| M3 | 8-24 GB | 1-3B 模型 | 快 |
-| M3 Pro/Max | 18-128 GB | 3-13B 模型 | 很快 |
-
-### Intel Mac - 不推荐
-
-- ⚠️ 仅支持 CPU 训练
-- ⚠️ 速度非常慢（比 M1 慢 10-50 倍）
-- 💡 建议使用云 GPU（如 Google Colab, AWS）
+- **文件**: `datasets/19503488-349b-4321-941d-7875fca0737b.csv`
+- **样本数**: 1,000 条法律问答对
+- **格式**: instruction (问题) + output (回答)
+- **领域**: 中国法律（合同法、劳动法、刑法等）
 
 ## 🚀 快速开始
 
-### 1. 安装依赖
+### 1. 环境准备
 
 ```bash
+# 克隆项目（如果从 Git 获取）
+git clone <your-repo>
+cd lora
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-**注意**: `bitsandbytes` 已被注释掉，无需安装。
+**系统要求**:
+- Python 3.8+
+- macOS (Apple Silicon) / Linux with CUDA / Windows with CUDA
+- 内存: 8GB+ (macOS) / 显存: 8GB+ (CUDA)
 
-### 2. 开始训练
+### 2. 下载模型
 
 ```bash
-# 使用默认配置（会自动适配 macOS）
-python train.py
+# 创建下载脚本
+cat > download_model.py << 'EOF'
+from modelscope.hub.snapshot_download import snapshot_download
+model_path = snapshot_download('LLM-Research/Llama-3.2-3B-Instruct', 
+                               cache_dir='./models', 
+                               revision='master')
+print(f"模型已下载到: {model_path}")
+EOF
 
-# 或使用脚本
-./run_train.sh
+# 运行下载
+python download_model.py
 ```
 
-训练脚本会自动：
-- ✅ 检测 MPS 可用性
-- ✅ 禁用 4-bit 量化
-- ✅ 使用 float32 精度
-- ✅ 选择合适的优化器
+模型会下载到 `./models/LLM-Research/Llama-3.2-3B-Instruct/` (~6GB)
 
-## ⚙️ macOS 优化配置
+### 3. 开始训练
 
-### 推荐参数（Llama-3.2-3B + M1 Pro/Max）
+```bash
+# 使用便捷脚本（推荐）
+./train_csv.sh
+
+# 或直接运行 Python
+python train.py --dataset_name ./datasets/19503488-349b-4321-941d-7875fca0737b.csv
+```
+
+训练输出会保存到 `./output/llama-lora-YYYYMMDD_HHMMSS/`
+
+### 4. 模型推理
+
+```bash
+# 单次推理
+python inference.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --prompt "劳动合同纠纷如何处理？"
+
+# 交互式对话
+python inference.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --interactive
+```
+
+### 5. 效果对比
+
+```bash
+# 对比微调前后的回答
+python compare_models.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --test_file test_questions.txt
+```
+
+## 📊 训练配置
+
+### 默认参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `model_name` | `./models/LLM-Research/Llama-3.2-3B-Instruct` | 模型路径 |
+| `dataset_name` | `./datasets/xxx.csv` | 数据集路径 |
+| `num_epochs` | 3 | 训练轮数 |
+| `batch_size` | 2 | 批次大小 |
+| `gradient_accumulation_steps` | 8 | 梯度累积（有效批次=16） |
+| `learning_rate` | 1e-4 | 学习率 |
+| `max_length` | 512 | 最大序列长度 |
+| `lora_r` | 32 | LoRA 秩 |
+| `lora_alpha` | 64 | LoRA alpha |
+| `lora_dropout` | 0.1 | LoRA dropout |
+
+### LoRA 参数详解
+
+- **lora_r**: 控制低秩矩阵的秩，越大模型容量越大（推荐: 16-64）
+- **lora_alpha**: 缩放因子，通常设为 r 的 2 倍
+- **lora_dropout**: 防止过拟合，法律领域推荐 0.1
+- **target_modules**: 应用 LoRA 的层（已优化为全部注意力层和FFN层）
+
+### 自定义训练
 
 ```bash
 python train.py \
-  --batch_size 1 \              # 减小批次节省内存
-  --gradient_accumulation_steps 16 \  # 增加累积保持效果
-  --max_length 384 \            # 减小序列长度
-  --num_epochs 2 \              # 减少轮数加快训练
-  --lora_r 16 \                 # 减小 LoRA 秩
-  --lora_alpha 32
-```
-
-### 如果内存不足
-
-```bash
-python train.py \
+  --dataset_name ./datasets/19503488-349b-4321-941d-7875fca0737b.csv \
+  --num_epochs 5 \
   --batch_size 1 \
-  --gradient_accumulation_steps 32 \
-  --max_length 256 \
-  --lora_r 8 \
-  --lora_alpha 16
+  --gradient_accumulation_steps 16 \
+  --learning_rate 5e-5 \
+  --max_length 384 \
+  --lora_r 16 \
+  --lora_alpha 32
 ```
 
 ## ⏱️ 训练时间预估
 
-### Llama-3.2-3B 模型（21,476 样本，3 epochs）
+### 1,000 样本，3 epochs
 
 | 设备 | 配置 | 预计时间 |
 |------|------|---------|
-| M1 (8GB) | batch=1, len=256 | 48-72 小时 |
-| M1 Pro (16GB) | batch=1, len=384 | 24-36 小时 |
-| M2 Max (32GB) | batch=2, len=512 | 12-18 小时 |
-| M3 Max (64GB) | batch=4, len=512 | 8-12 小时 |
+| **CUDA GPU** | | |
+| RTX 3090 (24GB) | batch=2, 4-bit量化 | 20-30 分钟 |
+| RTX 4090 (24GB) | batch=4, 4-bit量化 | 15-20 分钟 |
+| A100 (40GB) | batch=4, 4-bit量化 | 10-15 分钟 |
+| **Apple Silicon (macOS)** | | |
+| M1 (8GB) | batch=1, fp32 | 2-3 小时 |
+| M1 Pro (16GB) | batch=1, fp32 | 1-2 小时 |
+| M2 Max (32GB) | batch=2, fp32 | 30-45 分钟 |
+| M3 Max (64GB) | batch=4, fp32 | 20-30 分钟 |
 
-**对比 CUDA (RTX 3090)**:
-- RTX 3090 (4-bit): ~9-12 小时
-- M2 Max (fp32): ~12-18 小时 (约 1.5x 慢)
+## 💻 设备适配说明
 
-## 🔍 性能监控
+### macOS (Apple Silicon)
 
-### 检查 MPS 使用情况
+项目自动适配 macOS：
+- ✅ 自动检测并使用 **MPS** (Metal Performance Shaders) 加速
+- ✅ 自动禁用 4-bit 量化（macOS 不支持）
+- ✅ 使用 float32 精度（MPS 最佳兼容）
+- ✅ 优化器自动切换为 `adamw_torch`
 
-```bash
-# 终端监控
-sudo powermetrics --samplers gpu_power -i1000 -n1
+**注意**: macOS 上训练速度比 CUDA 慢约 1.5-2 倍，但仍然可用。
 
-# 活动监控器
-打开"活动监控器" → "能源" 标签页 → 查看 GPU 活动
+### CUDA GPU
+
+- ✅ 支持 4-bit 量化（需要安装 `bitsandbytes`）
+- ✅ 使用 bfloat16 混合精度训练
+- ✅ 优化器：`paged_adamw_8bit`（量化）或 `adamw_torch`
+
+### CPU
+
+- ⚠️ 不推荐（训练非常慢）
+- 建议使用云 GPU 服务（Google Colab、AWS 等）
+
+## 📁 项目结构
+
+```
+lora/
+├── train.py                    # 训练脚本
+├── inference.py                # 推理脚本
+├── compare_models.py           # 模型对比工具
+├── train_csv.sh               # 训练启动脚本
+├── config.yaml                # 配置文件
+├── requirements.txt           # Python依赖
+├── test_questions.txt         # 测试问题
+├── README.md                  # 项目说明（本文件）
+├── CSV_TRAINING_GUIDE.md      # CSV训练详细指南
+├── .gitignore                 # Git忽略文件
+│
+├── datasets/                  # 数据集目录
+│   └── 19503488-349b-4321-941d-7875fca0737b.csv  # 训练数据
+│
+├── models/                    # 模型目录
+│   └── LLM-Research/
+│       └── Llama-3.2-3B-Instruct/  # 下载的基础模型
+│
+└── output/                    # 训练输出（.gitignore已忽略）
+    └── llama-lora-YYYYMMDD_HHMMSS/
+        ├── final_model/       # 最终LoRA权重
+        └── logs/             # TensorBoard日志
 ```
 
-### TensorBoard
+## 🎯 使用场景
+
+### 1. 训练自定义模型
 
 ```bash
-tensorboard --logdir ./output/llama-lora-*/logs
+# 准备你的CSV数据（格式: instruction, output, input）
+# 参考 datasets/19503488-349b-4321-941d-7875fca0737b.csv
+
+python train.py \
+  --dataset_name ./datasets/your_data.csv \
+  --num_epochs 3
 ```
 
-## 💡 macOS 训练技巧
+### 2. 调整训练参数
 
-### 1. 优化内存使用
+```bash
+# 显存不足时
+python train.py \
+  --batch_size 1 \
+  --gradient_accumulation_steps 16 \
+  --max_length 256
+
+# 提高训练质量
+python train.py \
+  --num_epochs 5 \
+  --learning_rate 5e-5 \
+  --lora_r 64 \
+  --lora_alpha 128
+```
+
+### 3. 批量推理
 
 ```python
-# 在训练开始前添加
-import torch
-torch.mps.empty_cache()  # 清空 MPS 缓存
+# batch_inference.py
+from inference import load_model, generate_response
+
+model, tokenizer = load_model(base_model, lora_weights)
+
+questions = [
+    "什么是合同法？",
+    "劳动合同纠纷如何处理？",
+    # ...
+]
+
+for q in questions:
+    response = generate_response(model, tokenizer, q, args)
+    print(f"Q: {q}\nA: {response}\n")
 ```
 
-### 2. 防止 Mac 休眠
+### 4. 模型评估
 
 ```bash
-# 训练期间保持唤醒（新终端窗口）
-caffeinate -i python train.py
+# 使用测试集评估
+python compare_models.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --test_file test_questions.txt \
+  > evaluation_results.txt
+
+# 分析结果
+grep "微调回答长度" evaluation_results.txt | awk '{print $2}'
 ```
 
-### 3. 使用数据子集快速测试
+## 🔧 常见问题
 
-```python
-# 修改 train.py 中的数据集加载
-dataset = load_dataset("Skepsun/lawyer_llama_data", split="train[:1000]")
-# 只使用前 1000 个样本测试
-```
-
-## 🐛 常见问题
-
-### Q1: 出现 "MPS backend out of memory" 错误
+### Q1: 训练时显存不足 (OOM)
 
 **解决方案**:
 ```bash
+# 减小批次大小和序列长度
 python train.py \
   --batch_size 1 \
-  --max_length 256 \
-  --gradient_accumulation_steps 32
+  --gradient_accumulation_steps 32 \
+  --max_length 256
 ```
 
-### Q2: 训练速度很慢
+### Q2: macOS 上训练很慢
 
-**原因**:
-- MPS 确实比 CUDA 慢（正常现象）
-- Intel Mac 只能用 CPU（非常慢）
+这是正常的，macOS MPS 比 CUDA 慢。**建议**:
+- 使用更小的数据集测试
+- 减少 epochs
+- 考虑使用云 GPU（Google Colab 免费提供 T4）
 
-**建议**:
-1. 减小数据集：使用子集快速测试
-2. 减少 epochs：从 3 降到 1-2
-3. 考虑使用云 GPU：
-   - Google Colab (免费 T4 GPU)
-   - AWS SageMaker
-   - Paperspace Gradient
+### Q3: 如何恢复中断的训练
 
-### Q3: 如何查看是否使用了 MPS？
-
-运行训练时，应该看到：
-```
-✓ 检测到 Apple Silicon (MPS)
-⚠️  macOS 不支持 4-bit 量化，已自动禁用
-✓ 使用 float32 精度（MPS 最佳兼容）
-✓ 模型已加载到 mps
+Trainer 会自动保存 checkpoint，在 output 目录查找：
+```bash
+ls ./output/llama-lora-xxx/checkpoint-*/
 ```
 
-### Q4: 可以在 macOS 上使用 CUDA 吗？
+然后修改 `train.py` 的 `resume_from_checkpoint` 参数。
 
-❌ **不可以**。macOS 不支持 NVIDIA CUDA。
-- Apple Silicon 使用 **MPS**
-- Intel Mac 只能用 **CPU**
+### Q4: 微调后效果不明显
 
-## 🌐 云训练替代方案
+**可能原因**:
+1. 训练数据太少 → 增加数据量
+2. 训练轮数不够 → 增加 epochs
+3. LoRA 秩太小 → 增大 lora_r
+4. 学习率太小 → 适当提高
 
-如果 macOS 训练太慢，考虑使用云服务：
+**验证方法**:
+```bash
+python compare_models.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --prompt "训练集中的问题"
+```
 
-### Google Colab (推荐新手)
-- ✅ 免费 T4 GPU (15GB)
-- ✅ 无需配置
-- ⚠️ 会话有时间限制
+### Q5: 如何评估模型质量
 
-### Kaggle Notebooks
-- ✅ 免费 P100 GPU (16GB)
-- ✅ 每周 30 小时
+使用对比工具：
+```bash
+python compare_models.py \
+  --lora_weights ./output/llama-lora-xxx/final_model \
+  --test_file test_questions.txt
+```
 
-### AWS SageMaker
-- 💰 按需付费
-- ✅ 强大的 A100/V100 GPU
-- ✅ 适合大规模训练
+关注：
+- ✅ 是否引用法条
+- ✅ 回答是否更详细
+- ✅ 逻辑是否更清晰
+- ✅ 专业术语使用是否准确
 
-### Paperspace Gradient
-- 💰 按小时计费（~$0.5-2/小时）
-- ✅ 简单易用
-- ✅ 支持 Jupyter Notebook
+## 📈 监控训练
 
-## 📝 最佳实践
+### 使用 TensorBoard
 
-### macOS 上的推荐工作流
+```bash
+# 启动 TensorBoard
+tensorboard --logdir ./output/llama-lora-xxx/logs
 
-1. **本地开发调试**:
-   ```bash
-   # 使用小数据集快速测试代码
-   python train.py --num_epochs 1 \
-     --dataset_name "Skepsun/lawyer_llama_data" \
-     # 限制样本数进行测试
-   ```
+# 在浏览器打开
+# http://localhost:6006
+```
 
-2. **云端完整训练**:
-   - 将代码上传到 Google Colab
-   - 使用免费 GPU 完成完整训练
-   - 下载训练好的模型
+可以查看：
+- 训练损失曲线
+- 学习率变化
+- 梯度统计信息
 
-3. **本地推理测试**:
-   ```bash
-   # 下载训练好的模型后，在本地测试
-   python inference.py --lora_weights ./output/.../final_model --interactive
-   ```
+### 实时日志
 
-## 🆚 macOS vs CUDA 对比
+训练过程会实时显示：
+```
+Epoch 1/3: 100%|████████| 63/63 [05:23<00:00, 5.16s/it]
+{'loss': 1.234, 'learning_rate': 0.0001, 'epoch': 1.0}
+```
 
-| 特性 | macOS (MPS) | CUDA GPU |
-|------|-------------|----------|
-| 4-bit 量化 | ❌ | ✅ |
-| 训练速度 | 中等 | 快 |
-| 显存效率 | 一般 | 优秀 |
-| 功耗 | 低 | 高 |
-| 成本 | 硬件贵 | 硬件便宜 |
-| 便携性 | ✅ 笔记本 | ❌ 台式机 |
-| 噪音 | 静音 | 可能大 |
+## 🌟 进阶使用
+
+### 1. 使用配置文件
+
+编辑 `config.yaml` 然后：
+```python
+import yaml
+with open('config.yaml') as f:
+    config = yaml.safe_load(f)
+
+# 使用配置训练
+# 修改 train.py 以支持配置文件
+```
+
+### 2. 多数据集训练
+
+```python
+import pandas as pd
+
+# 合并多个数据集
+df1 = pd.read_csv('dataset1.csv')
+df2 = pd.read_csv('dataset2.csv')
+combined = pd.concat([df1, df2], ignore_index=True)
+combined.to_csv('combined_dataset.csv', index=False)
+
+# 训练
+python train.py --dataset_name combined_dataset.csv
+```
+
+### 3. 超参数搜索
+
+```bash
+# 测试不同的学习率
+for lr in 5e-5 1e-4 2e-4; do
+  python train.py --learning_rate $lr --output_dir ./output/lr_$lr
+done
+
+# 对比结果
+python compare_models.py --lora_weights ./output/lr_5e-5/final_model
+python compare_models.py --lora_weights ./output/lr_1e-4/final_model
+python compare_models.py --lora_weights ./output/lr_2e-4/final_model
+```
 
 ## 📚 相关资源
 
-- [Apple MPS 文档](https://developer.apple.com/metal/pytorch/)
-- [PyTorch MPS 后端](https://pytorch.org/docs/stable/notes/mps.html)
-- [PEFT 库文档](https://huggingface.co/docs/peft)
+- [Llama 3.2 模型](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
+- [PEFT 文档](https://huggingface.co/docs/peft)
+- [LoRA 论文](https://arxiv.org/abs/2106.09685)
+- [ModelScope 平台](https://modelscope.cn/)
+
+## 📄 许可证
+
+本项目代码遵循 MIT 许可证。
+
+**注意**: Llama 3.2 模型有自己的使用条款，请遵守 [Meta Llama 3.2 社区许可协议](https://www.llama.com/llama3_2/license/)。
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+改进建议：
+- 支持更多数据格式
+- 添加更多评估指标
+- 优化训练速度
+- 支持多GPU训练
+
+## 📧 联系方式
+
+如有问题，请：
+1. 查看 `CSV_TRAINING_GUIDE.md` 获取更多细节
+2. 提交 GitHub Issue
+3. 参考常见问题部分
 
 ---
 
-**总结**: macOS 可以训练 LoRA 模型，但速度较慢。适合开发调试，正式训练建议使用云 GPU。
+## 快速命令速查
 
-如有问题，请参考 README.md 或提交 Issue。
+```bash
+# 训练
+./train_csv.sh
 
+# 推理
+python inference.py --lora_weights ./output/xxx/final_model --interactive
+
+# 对比
+python compare_models.py --lora_weights ./output/xxx/final_model --test_file test_questions.txt
+
+# 监控
+tensorboard --logdir ./output/xxx/logs
+
+# 清理
+rm -rf ./output/*
+```
+
+祝你微调愉快！🚀

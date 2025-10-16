@@ -29,7 +29,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="LoRA微调Llama模型")
     parser.add_argument("--model_name", type=str, default="./models/LLM-Research/Llama-3.2-3B-Instruct",
                         help="预训练模型名称或路径")
-    parser.add_argument("--dataset_name", type=str, default="Skepsun/lawyer_llama_data",
+    parser.add_argument("--dataset_name", type=str, default="./datasets/19503488-349b-4321-941d-7875fca0737b.csv",
                         help="数据集名称（HuggingFace）或CSV文件路径")
     parser.add_argument("--dataset_type", type=str, default="auto", choices=["auto", "huggingface", "csv"],
                         help="数据集类型：auto（自动检测）、huggingface、csv")
