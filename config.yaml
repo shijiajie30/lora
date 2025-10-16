@@ -1,0 +1,56 @@
+# LoRA微调配置文件 - Llama-3.2-3B-Instruct
+
+# 模型配置
+model:
+  name: "./models/LLM-Research/Llama-3.2-3B-Instruct"
+  use_4bit: true
+  use_flash_attention: false
+
+# 数据集配置
+dataset:
+  name: "Skepsun/lawyer_llama_data"
+  max_length: 512
+  train_split: "train"
+
+# LoRA配置（针对3B模型优化）
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.1
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+# 训练配置（针对3B模型优化）
+training:
+  output_dir: "./output"
+  num_epochs: 3
+  batch_size: 2  # 3B模型减小批次大小
+  gradient_accumulation_steps: 8  # 增加梯度累积以保持有效批次=16
+  learning_rate: 0.0001  # 3B模型使用更小的学习率
+  warmup_ratio: 0.05
+  lr_scheduler_type: "cosine"
+  optimizer: "paged_adamw_8bit"
+  
+  # 日志和保存
+  logging_steps: 10
+  save_strategy: "epoch"
+  save_total_limit: 2
+  
+  # 精度
+  fp16: false
+  bf16: true
+
+# 推理配置
+inference:
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  top_k: 50
+  do_sample: true
+

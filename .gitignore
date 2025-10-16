@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 训练输出 - 忽略
+output/
+checkpoints/
+
+# 日志文件 - 忽略
+*.log
+logs/
+wandb/
+runs/
+tensorboard/
+events.out.tfevents.*
+
+# 模型文件 - 忽略（太大，建议单独下载）
+models/
+
+# 数据集缓存 - 忽略
+datasets/*.lock
+datasets/.cache/
+.cache/
+*.cache
+
+# 但保留CSV数据集文件
+!datasets/*.csv
+
+# HuggingFace cache - 忽略
+.huggingface/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# 环境配置（如果包含敏感信息）
+.env
+.env.local
+
